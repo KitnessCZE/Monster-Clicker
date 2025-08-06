@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Monster Clicker: Alpha</title>
+  <style>
+    body {
+      background-color: #222;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+    }
+    #game, #login-screen {
+      display: none;
+    }
+    .btn {
+      padding: 10px 20px;
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      font-size: 18px;
+      cursor: pointer;
+      border-radius: 10px;
+      margin: 10px;
+    }
+    .btn:disabled {
+      background-color: gray;
+      cursor: not-allowed;
+    }
+    #shop button.shake {
+      animation: shake 0.4s;
+    }
+    @keyframes shake {
+      0% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      50% { transform: translateX(5px); }
+      75% { transform: translateX(-5px); }
+      100% { transform: translateX(0); }
+    }
+    #coin-texture {
+      font-size: 22px;
+      color: gold;
+      text-shadow: 0 0 5px #FFD700;
+    }
+    #version {
+      position: absolute;
+      bottom: 5px;
+      left: 10px;
+      font-size: 14px;
+      color: gray;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Přihlašovací obrazovka -->
+<div id="login-screen">
+  <h1>Monster Clicker: Alpha</h1>
+  <input type="text" id="username" placeholder="Username"><br><br>
+  <input type="password" id="password" placeholder="Password"><br><br>
+  <input type="password" id="confirm-password" placeholder="Re-enter Password" style="display:none;"><br><br>
+  <button class="btn" onclick="register()">Create an Account</button>
+  <button class="btn" onclick="login()">Login</button>
+</div>
+
+<!-- Herní obrazovka -->
+<div id="game">
+  <h2 id="player-name"></h2>
+  <p id="stats"></p>
+  <p id="stage"></p>
+  <button class="btn" onclick="clickMonster()" id="monster-button">Click to attack Monster</button>
+  <p id="monster-hp"></p>
+  <p id="reward-text"></p>
+  <div id="coin-texture">Coins: <span id="coins">0</span></div>
+  <div id="shop">
+    <button class="btn" onclick="buyUpgrade(this)">Upgrade (+1 DMG) - 20 coins</button>
+    <button class="btn" onclick="heal()">Heal (30 coins)</button>
+  </div>
+  <button class="btn" onclick="togglePause()">Pause / Resume</button>
+</div>
+
+<p id="version">Alpha 0.3.6</p>
+
+<script>
+  let player = {
+    name: '',
+    hp: 10,
+    maxHp: 10,
+    dmg: 1,
+    def: 3,
+    coins: 0,
+    upgradeLevel: 0,
+    stage: 1,
+    world: 1,
+    lastClick: 0,
+    paused: false
+  };
+
+  let monster = {
+    hp: 10,
+    maxHp: 10
+  };
+
+  let attackInterval;
+
+  window.onload = () => {
+    document.getElementById("login-screen").style.display = "block";
+  };
+
+  function register() {
+    const u = document.getElementById("username").value;
+    const p = document.getElementById("password").value;
+    const cp = document.getElementById("confirm-password");
+    if (p.length < 8) return alert("Password must be at least 8 characters.");
+    cp.style.display = "inline-block";
+    if (cp.value && cp.value !== p) return alert("Passwords do not match.");
+    if (!cp.value) return;
+
+    localStorage.setItem("account_" + u, JSON.stringify({password: p, data: null}));
+    alert("Account created!");
+  }
+
+  function login() {
+    const u = document.getElementById("username").value;
+    const p = document.getElementById("password").value;
+    const data = localStorage.getItem("account_" + u);
+    if (!data) return alert("Account not found.");
+    const account = JSON.parse(data);
+    if (account.password !== p) return alert("Wrong password.");
+    player.name = u;
+
+    if (account.data) Object.assign(player, account.data);
+    document.getElementById("login-screen").style.display = "none";
+    document.getElementById("game").style.display = "block";
+    document.getElementById("player-name").innerText = "Welcome, " + player.name;
+    updateUI();
+    startMonsterAttack();
+  }
+
+  function saveData() {
+    const stored = JSON.parse(localStorage.getItem("account_" + player.name));
+    stored.data = player;
+    localStorage.setItem("account_" + player.name, JSON.stringify(stored));
+  }
+
+  function updateUI() {
+    document.getElementById("stats").innerText = `HP: ${player.hp}/${player.maxHp} | DMG: ${player.dmg} | DEF: ${player.def}`;
+    document.getElementById("stage").innerText = `World ${player.world} - Stage ${player.stage}`;
+    document.getElementById("coins").innerText = player.coins;
+    document.getElementById("monster-hp").innerText = `Monster HP: ${monster.hp}/${monster.maxHp}`;
+  }
+
+  function clickMonster() {
+    if (Date.now() - player.lastClick < 400 || player.paused) return;
+    player.lastClick = Date.now();
+    monster.hp -= player.dmg;
+    if (monster.hp <= 0) {
+      const reward = Math.floor(Math.random() * 15) + 1;
+      const scaled = Math.floor(reward * Math.pow(1.05, player.stage - 1));
+      player.coins += scaled;
+      player.hp = Math.min(player.maxHp, player.hp + 2 + 1); // +2 HP + bonus +1
+      player.stage++;
+      if (player.stage > 5) {
+        player.stage = 1;
+        player.world++;
+        player.maxHp += 10;
+        player.hp = player.maxHp;
+      }
+      monster.maxHp += Math.floor(monster.maxHp * 0.5);
+      monster.hp = monster.maxHp;
+      document.getElementById("reward-text").innerText = `+${scaled} coins!`;
+    }
+    updateUI();
+    saveData();
+  }
+
+  function buyUpgrade(btn) {
+    if (player.coins >= 20 && player.upgradeLevel < 10) {
+      player.coins -= 20;
+      player.dmg += 1;
+      player.upgradeLevel++;
+    } else {
+      btn.classList.add("shake");
+      setTimeout(() => btn.classList.remove("shake"), 400);
+    }
+    updateUI();
+    saveData();
+  }
+
+  function heal() {
+    if (player.coins >= 30 && player.hp < player.maxHp) {
+      player.coins -= 30;
+      player.hp = Math.min(player.hp + 5, player.maxHp);
+      updateUI();
+      saveData();
+    }
+  }
+
+  function togglePause() {
+    player.paused = !player.paused;
+    if (player.paused) {
+      clearInterval(attackInterval);
+    } else {
+      startMonsterAttack();
+    }
+  }
+
+  function startMonsterAttack() {
+    attackInterval = setInterval(() => {
+      if (!player.paused) {
+        const dmg = Math.max(1, Math.floor(5 / player.def));
+        player.hp -= dmg;
+        if (player.hp <= 0) {
+          alert("You died!");
+          player.hp = player.maxHp;
+          player.coins = 0;
+          player.stage = 1;
+          player.world = 1;
+          player.dmg = 1;
+          player.def = 3;
+          player.upgradeLevel = 0;
+          monster.maxHp = 10;
+          monster.hp = 10;
+        }
+        updateUI();
+        saveData();
+      }
+    }, 10000);
+  }
+</script>
+</body>
+</html>
